@@ -9,6 +9,17 @@ from PIL import Image
 import torchvision.transforms as transforms
 from abc import ABC, abstractmethod
 
+import pydicom
+
+
+_pil_interpolation_to_str = {
+    Image.NEAREST: 'PIL.Image.NEAREST',
+    Image.BILINEAR: 'PIL.Image.BILINEAR',
+    Image.BICUBIC: 'PIL.Image.BICUBIC',
+    Image.LANCZOS: 'PIL.Image.LANCZOS',
+    Image.HAMMING: 'PIL.Image.HAMMING',
+    Image.BOX: 'PIL.Image.BOX',
+}
 
 class BaseDataset(data.Dataset, ABC):
     """This class is an abstract base class (ABC) for datasets.
@@ -58,6 +69,41 @@ class BaseDataset(data.Dataset, ABC):
             a dictionary of data with their names. It ususally contains the data itself and its metadata information.
         """
         pass
+'''
+class dicom_Resize(torch.nn.Module):
+    """
+    resize numpy of dicom data
+    """
+
+    def __init__(self, size, interpolation):
+        if not isinstance(size, (int, Sequence)):
+            raise TypeError("Size should be int or sequence. Got {}".format(type(size)))
+        if isinstance(size, Sequence) and len(size) not in (1, 2):
+            raise ValueError("If size is a sequence, it should have 1 or 2 values")
+        self.size = size
+        self.interpolation = interpolation
+
+    def forward(self, img):
+
+    def __repr__(self):
+        interpolate_str = _pil_interpolation_to_str[self.interpolation]
+        return self.__class__.__name__ + '(size={0}, interpolation={1})'.format(self.size, interpolate_str)
+'''
+
+def open_dicom(path):
+    image_medical = pydicom.dcmread(path)
+    image_data = image_medical.pixel_array
+
+    hu_image = image_data * image_medical.RescaleSlope + image_medical.RescaleIntercept
+    hu_image[hu_image < -1024] = -1024
+
+    #image_window = window_image(image_hu.copy(), window_level, window_width)
+
+    hu_image = np.expand_dims(hu_image, axis=2)  # (512, 512, 1)
+    # image_ths = np.concatenate([image_window_norm, image_window_norm, image_window_norm], axis=2)   # (512, 512, 3)
+
+    # return image_ths # use 3-channel
+    return hu_image  # use single-channel
 
 
 def get_params(opt, size):
@@ -80,8 +126,19 @@ def get_params(opt, size):
 
 def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, convert=True):
     transform_list = []
+
+    if convert:
+        transform_list += [transforms.ToTensor()]
+        if grayscale:
+            transform_list += [transforms.Normalize((0.5,), (0.5,))]
+        else:
+            transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+
     if grayscale:
-        transform_list.append(transforms.Grayscale(1))
+        if opt.dicom:
+            pass
+        else:
+            transform_list.append(transforms.Grayscale(1))
     if 'resize' in opt.preprocess:
         osize = [opt.load_size, opt.load_size]
         transform_list.append(transforms.Resize(osize, method))
@@ -103,12 +160,6 @@ def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, conve
         elif params['flip']:
             transform_list.append(transforms.Lambda(lambda img: __flip(img, params['flip'])))
 
-    if convert:
-        transform_list += [transforms.ToTensor()]
-        if grayscale:
-            transform_list += [transforms.Normalize((0.5,), (0.5,))]
-        else:
-            transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     return transforms.Compose(transform_list)
 
 
