@@ -38,6 +38,8 @@ class UnalignedDataset(BaseDataset):
         self.transform_A = get_transform(self.opt, grayscale=(input_nc == 1))
         self.transform_B = get_transform(self.opt, grayscale=(output_nc == 1))
 
+        self.dicom = opt.dicom
+
     def __getitem__(self, index):
         """Return a data point and its metadata information.
 
@@ -56,21 +58,13 @@ class UnalignedDataset(BaseDataset):
         else:   # randomize the index for domain B to avoid fixed pairs.
             index_B = random.randint(0, self.B_size - 1)
         B_path = self.B_paths[index_B]
-        tmp_A_img = open_dicom(A_path)
-        tmp_B_img = open_dicom(B_path)
-        # apply image transformation
-        A = self.transform_A(tmp_A_img)
-        B = self.transform_B(tmp_B_img)
-
-        return {'A': A.type(torch.FloatTensor), 'B': B.type(torch.FloatTensor), 'A_paths': A_path, 'B_paths': B_path}
-
-        A_img = Image.open(A_path).convert('RGB') if ".dcm" not in A_path else Image.fromarray(open_dicom(A_path))
-        B_img = Image.open(B_path).convert('RGB') if ".dcm" not in B_path else Image.fromarray(open_dicom(B_path))
+        A_img = Image.open(A_path).convert('RGB') if not self.dicom else open_dicom(A_path)
+        B_img = Image.open(B_path).convert('RGB') if not self.dicom else open_dicom(B_path)
         # apply image transformation
         A = self.transform_A(A_img)
         B = self.transform_B(B_img)
 
-        return {'A': A, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
+        return {'A': A.type(torch.FloatTensor), 'B': B.type(torch.FloatTensor), 'A_paths': A_path, 'B_paths': B_path}
 
     def __len__(self):
         """Return the total number of images in the dataset.

@@ -9,7 +9,9 @@ from PIL import Image
 import torchvision.transforms as transforms
 from abc import ABC, abstractmethod
 
+import torch
 import pydicom
+import torchvision.transforms.functional as F
 
 
 _pil_interpolation_to_str = {
@@ -69,28 +71,37 @@ class BaseDataset(data.Dataset, ABC):
             a dictionary of data with their names. It ususally contains the data itself and its metadata information.
         """
         pass
-'''
-class dicom_Resize(torch.nn.Module):
+
+
+class DicomToTensor(object):
     """
-    resize numpy of dicom data
+    convert dicom numpy to normalized tensor(torch)
     """
 
-    def __init__(self, size, interpolation):
-        if not isinstance(size, (int, Sequence)):
-            raise TypeError("Size should be int or sequence. Got {}".format(type(size)))
-        if isinstance(size, Sequence) and len(size) not in (1, 2):
-            raise ValueError("If size is a sequence, it should have 1 or 2 values")
-        self.size = size
-        self.interpolation = interpolation
-
-    def forward(self, img):
+    def __call__(self, target_dicom):
+        # numpy HWD
+        # torch DHW
+        target_dicom = target_dicom.transpose((2, 0, 1))
+        target_dicom = resize_normalize(target_dicom)
+        return torch.from_numpy(target_dicom)
 
     def __repr__(self):
-        interpolate_str = _pil_interpolation_to_str[self.interpolation]
-        return self.__class__.__name__ + '(size={0}, interpolation={1})'.format(self.size, interpolate_str)
-'''
+        return self.__class__.__name__ + '()'
+
+def resize_normalize(image):
+    image = np.array(image, dtype=np.float64)
+    image -= np.min(image)
+    image /= np.max(image)
+    return image
 
 def open_dicom(path):
+    """
+    load dicom pixel data and return HU value
+    Args:
+        path: dicom file path
+
+    Returns: dicom HU pixel array
+    """
     image_medical = pydicom.dcmread(path)
     image_data = image_medical.pixel_array
 
@@ -100,9 +111,9 @@ def open_dicom(path):
     #image_window = window_image(image_hu.copy(), window_level, window_width)
 
     hu_image = np.expand_dims(hu_image, axis=2)  # (512, 512, 1)
-    # image_ths = np.concatenate([image_window_norm, image_window_norm, image_window_norm], axis=2)   # (512, 512, 3)
+    #image_norm = resize_normalize(hu_image)
 
-    # return image_ths # use 3-channel
+    #return image_norm  # use single-channel
     return hu_image  # use single-channel
 
 
@@ -128,8 +139,11 @@ def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, conve
     transform_list = []
 
     if convert:
-        transform_list += [transforms.ToTensor()]
-        if grayscale:
+        if opt.dicom:
+            transform_list += [DicomToTensor()]
+        else:
+            transform_list += [transforms.ToTensor()]
+        if grayscale or opt.dicom:
             transform_list += [transforms.Normalize((0.5,), (0.5,))]
         else:
             transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
@@ -164,7 +178,10 @@ def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, conve
 
 
 def __make_power_2(img, base, method=Image.BICUBIC):
-    ow, oh = img.size
+    if torch.is_tensor(img):
+        _, oh, ow = img.size()
+    else:
+        ow, oh = img.size
     h = int(round(oh / base) * base)
     w = int(round(ow / base) * base)
     if h == oh and w == ow:
@@ -175,7 +192,10 @@ def __make_power_2(img, base, method=Image.BICUBIC):
 
 
 def __scale_width(img, target_size, crop_size, method=Image.BICUBIC):
-    ow, oh = img.size
+    if torch.is_tensor(img):
+        _, oh, ow = img.size()
+    else:
+        ow, oh = img.size
     if ow == target_size and oh >= crop_size:
         return img
     w = target_size
@@ -184,17 +204,20 @@ def __scale_width(img, target_size, crop_size, method=Image.BICUBIC):
 
 
 def __crop(img, pos, size):
-    ow, oh = img.size
+    if torch.is_tensor(img):
+        _, oh, ow = img.size()
+    else:
+        ow, oh = img.size
     x1, y1 = pos
     tw = th = size
     if (ow > tw or oh > th):
-        return img.crop((x1, y1, x1 + tw, y1 + th))
+        return img.crop((x1, y1, x1 + tw, y1 + th)) if not torch.is_tensor(img) else F.crop(img, y1, x1, th, tw)
     return img
 
 
 def __flip(img, flip):
     if flip:
-        return img.transpose(Image.FLIP_LEFT_RIGHT)
+        return img.transpose(Image.FLIP_LEFT_RIGHT) if not torch.is_tensor(img) else torch.flip(img, [0, 2])
     return img
 
 
