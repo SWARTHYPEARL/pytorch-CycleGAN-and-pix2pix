@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 import os
 
+import pydicom
 
 def tensor2im(input_image, imtype=np.uint8):
     """"Converts a Tensor array into a numpy image array.
@@ -101,3 +102,52 @@ def mkdir(path):
     """
     if not os.path.exists(path):
         os.makedirs(path)
+
+
+def resize_normalize(image):
+    image = np.array(image, dtype=np.float64)
+    #image -= np.min(image)
+    image -= -1024
+    #image /= np.max(image)
+    image /= 4095
+    return image
+
+
+def open_dicom(path):
+    """
+    load dicom pixel data and return HU value
+    Args:
+        path: dicom file path
+
+    Returns: dicom HU pixel array
+    """
+    image_medical = pydicom.dcmread(path)
+    image_data = image_medical.pixel_array
+
+    hu_image = image_data * image_medical.RescaleSlope + image_medical.RescaleIntercept
+    hu_image[hu_image < -1024] = -1024
+    hu_image[hu_image > 3071] = 3071
+
+    #image_window = window_image(image_hu.copy(), window_level, window_width)
+
+    hu_image = np.expand_dims(hu_image, axis=2)  # (512, 512, 1)
+    #image_norm = resize_normalize(hu_image)
+
+    #return image_norm  # use single-channel
+    return hu_image  # use single-channel
+
+
+def tensor2dicom(input_image, original_path, save_path):
+    image_numpy = input_image.squeeze(0).cpu().numpy()
+
+    original_dicom = pydicom.dcmread(original_path)
+    original_numpy = original_dicom.pixel_array
+    #print(original_dicom.file_meta.TransferSyntaxUID)
+
+    #original_dicom.PixelData = np.round((image_numpy + 1) / 2.0 * (np.max(original_numpy * original_dicom.RescaleSlope))).astype(np.uint16).tobytes()
+    original_dicom.PixelData = np.round((image_numpy + 1) / 2.0 * 4095).astype(np.uint16).tobytes()
+    original_dicom.file_meta.TransferSyntaxUID = pydicom.uid.ExplicitVRLittleEndian
+
+    if not os.path.isdir(os.path.dirname(save_path)):
+        os.makedirs(os.path.dirname(save_path))
+    original_dicom.save_as(save_path)

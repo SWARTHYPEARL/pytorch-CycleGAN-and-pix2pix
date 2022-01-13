@@ -6,6 +6,8 @@ import time
 from . import util, html
 from subprocess import Popen, PIPE
 
+from util.util import tensor2dicom
+import torch
 
 try:
     import wandb
@@ -18,7 +20,7 @@ else:
     VisdomExceptionBase = ConnectionError
 
 
-def save_images(webpage, visuals, image_path, aspect_ratio=1.0, width=256, use_wandb=False):
+def save_images(webpage, visuals, image_path, aspect_ratio=1.0, width=256, use_wandb=False, opt_dicom = False, common_dir = None):
     """Save images to the disk.
 
     Parameters:
@@ -31,14 +33,16 @@ def save_images(webpage, visuals, image_path, aspect_ratio=1.0, width=256, use_w
     This function will save images stored in 'visuals' to the HTML file specified by 'webpage'.
     """
     image_dir = webpage.get_image_dir()
-    short_path = ntpath.basename(image_path[0])
+    #short_path = ntpath.basename(image_path[0])
+    target_path = image_path[0]
+    short_path = ntpath.basename(target_path)
     name = os.path.splitext(short_path)[0]
 
     webpage.add_header(name)
     ims, txts, links = [], [], []
     ims_dict = {}
-    for label, im_data in visuals.items():
-        im = util.tensor2im(im_data)
+    for idx, (label, im_data) in enumerate(visuals.items()):
+        im = util.tensor2im(torch.tensor(im_data))
         image_name = '%s_%s.png' % (name, label)
         save_path = os.path.join(image_dir, image_name)
         util.save_image(im, save_path, aspect_ratio=aspect_ratio)
@@ -47,6 +51,16 @@ def save_images(webpage, visuals, image_path, aspect_ratio=1.0, width=256, use_w
         links.append(image_name)
         if use_wandb:
             ims_dict[label] = wandb.Image(im)
+
+        if opt_dicom:
+            #print(os.path.abspath(os.path.dirname(target_path)))
+            #print(os.path.abspath(common_dir))
+
+            add_path = os.path.abspath(os.path.dirname(target_path)).replace(os.path.abspath(common_dir), "")
+            #print(image_dir + add_path + f"/{label}/{name}_{label}.dcm")
+            tensor2dicom(torch.tensor(im_data), target_path, image_dir + add_path + f"/{label}/{name}_{label}.dcm")
+
+
     webpage.add_images(ims, txts, links, width=width)
     if use_wandb:
         wandb.log(ims_dict)

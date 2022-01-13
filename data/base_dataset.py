@@ -10,8 +10,8 @@ import torchvision.transforms as transforms
 from abc import ABC, abstractmethod
 
 import torch
-import pydicom
 import torchvision.transforms.functional as F
+from util.util import resize_normalize
 
 
 _pil_interpolation_to_str = {
@@ -87,34 +87,6 @@ class DicomToTensor(object):
 
     def __repr__(self):
         return self.__class__.__name__ + '()'
-
-def resize_normalize(image):
-    image = np.array(image, dtype=np.float64)
-    image -= np.min(image)
-    image /= np.max(image)
-    return image
-
-def open_dicom(path):
-    """
-    load dicom pixel data and return HU value
-    Args:
-        path: dicom file path
-
-    Returns: dicom HU pixel array
-    """
-    image_medical = pydicom.dcmread(path)
-    image_data = image_medical.pixel_array
-
-    hu_image = image_data * image_medical.RescaleSlope + image_medical.RescaleIntercept
-    hu_image[hu_image < -1024] = -1024
-
-    #image_window = window_image(image_hu.copy(), window_level, window_width)
-
-    hu_image = np.expand_dims(hu_image, axis=2)  # (512, 512, 1)
-    #image_norm = resize_normalize(hu_image)
-
-    #return image_norm  # use single-channel
-    return hu_image  # use single-channel
 
 
 def get_params(opt, size):

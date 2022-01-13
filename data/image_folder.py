@@ -9,11 +9,13 @@ import torch.utils.data as data
 from PIL import Image
 import os
 
+from glob import glob
+
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
     '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP',
     '.tif', '.TIF', '.tiff', '.TIFF',
-    ".dcm", "npy",
+    ".dcm", ".npy",
 ]
 
 
@@ -25,11 +27,17 @@ def make_dataset(dir, max_dataset_size=float("inf")):
     images = []
     assert os.path.isdir(dir), '%s is not a valid directory' % dir
 
-    for root, _, fnames in sorted(os.walk(dir)):
-        for fname in fnames:
-            if is_image_file(fname):
-                path = os.path.join(root, fname)
-                images.append(path)
+    #for root, _, fnames in sorted(os.walk(dir)):
+    #    for fname in fnames:
+    #        if is_image_file(fname):
+    #            path = os.path.join(root, fname)
+    #            images.append(path)
+    for target_path in glob(dir + "/**/*", recursive=True):
+        if os.path.isdir(target_path):
+            continue
+        elif is_image_file(target_path):
+            images.append(target_path)
+
     return images[:min(max_dataset_size, len(images))]
 
 

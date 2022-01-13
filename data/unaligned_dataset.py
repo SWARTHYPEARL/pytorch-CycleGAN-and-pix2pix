@@ -1,11 +1,11 @@
 import os
-from data.base_dataset import BaseDataset, get_transform, open_dicom
+from data.base_dataset import BaseDataset, get_transform
 from data.image_folder import make_dataset
 from PIL import Image
 import random
 
 import torch
-
+from util.util import open_dicom
 
 class UnalignedDataset(BaseDataset):
     """
@@ -63,6 +63,7 @@ class UnalignedDataset(BaseDataset):
         # apply image transformation
         A = self.transform_A(A_img)
         B = self.transform_B(B_img)
+        # print(f"(min, max): ({torch.min(A).item()}, {torch.max(A).item()})")
 
         return {'A': A.type(torch.FloatTensor), 'B': B.type(torch.FloatTensor), 'A_paths': A_path, 'B_paths': B_path}
 
