@@ -4,6 +4,7 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 
+from IQA_pytorch import SSIM
 
 ###############################################################################
 # Helper Functions
@@ -234,6 +235,8 @@ class GANLoss(nn.Module):
             self.loss = nn.BCEWithLogitsLoss()
         elif gan_mode in ['wgangp']:
             self.loss = None
+        elif gan_mode == "ssim":
+            self.loss = SSIM(channels=1)
         else:
             raise NotImplementedError('gan mode %s not implemented' % gan_mode)
 
@@ -264,7 +267,7 @@ class GANLoss(nn.Module):
         Returns:
             the calculated loss.
         """
-        if self.gan_mode in ['lsgan', 'vanilla']:
+        if self.gan_mode in ['lsgan', 'vanilla', "ssim"]:
             target_tensor = self.get_target_tensor(prediction, target_is_real)
             loss = self.loss(prediction, target_tensor)
         elif self.gan_mode == 'wgangp':
