@@ -6,6 +6,9 @@ from PIL import Image
 import os
 
 import pydicom
+from typing import Tuple
+from torchvision.transforms import functional as F
+
 
 def tensor2im(input_image, imtype=np.uint8):
     """"Converts a Tensor array into a numpy image array.
@@ -151,3 +154,29 @@ def tensor2dicom(input_image, original_path, save_path):
     if not os.path.isdir(os.path.dirname(save_path)):
         os.makedirs(os.path.dirname(save_path))
     original_dicom.save_as(save_path)
+
+
+def get_RandomCrop(img: torch.Tensor, output_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
+    """Get parameters for ``crop`` for a random crop.
+
+    Args:
+        img (PIL Image or Tensor): Image to be cropped.
+        output_size (tuple): Expected output size of the crop.
+
+    Returns:
+        tuple: params (i, j, h, w) to be passed to ``crop`` for random crop.
+    """
+    w, h = F._get_image_size(img)
+    th, tw = output_size
+
+    if h + 1 < th or w + 1 < tw:
+        raise ValueError(
+            "Required crop size {} is larger then input image size {}".format((th, tw), (h, w))
+        )
+
+    if w == tw and h == th:
+        return 0, 0, h, w
+
+    i = torch.randint(0, h - th + 1, size=(1, )).item()
+    j = torch.randint(0, w - tw + 1, size=(1, )).item()
+    return i, j, th, tw
