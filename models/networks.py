@@ -239,7 +239,7 @@ class GANLoss(nn.Module):
         elif gan_mode in ['wgangp']:
             self.loss = None
         elif gan_mode == "ssim":
-            self.loss = SSIM(channels=1)
+            self.loss = [SSIM(channels=1), nn.L1Loss()]
 
         else:
             raise NotImplementedError('gan mode %s not implemented' % gan_mode)
@@ -286,7 +286,8 @@ class GANLoss(nn.Module):
             cropped_target_tensor = F.crop(target_tensor, i, j, h, w)
             cropped_prediction = F.crop(prediction, i, j, h, w)
 
-            loss = self.loss(cropped_prediction, cropped_target_tensor)
+            loss = 0.3 * self.loss[0](cropped_prediction, cropped_target_tensor) # SSIM calculate
+            loss += 0.7 * self.loss[1](cropped_prediction, cropped_target_tensor) # L1 loss calculate
         else:
             raise ValueError(
                 "Unsupported mode: {}".format(self.gan_mode)
