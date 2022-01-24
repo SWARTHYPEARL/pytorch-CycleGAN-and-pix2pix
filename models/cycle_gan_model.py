@@ -4,6 +4,10 @@ from util.image_pool import ImagePool
 from .base_model import BaseModel
 from . import networks
 
+from IQA_pytorch import SSIM
+from util.util import get_RandomCrop
+from torchvision.transforms import functional as F
+
 
 class CycleGANModel(BaseModel):
     """
@@ -40,7 +44,8 @@ class CycleGANModel(BaseModel):
         if is_train:
             parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=10.0, help='weight for cycle loss (B -> A -> B)')
-            parser.add_argument('--lambda_identity', type=float, default=0.5, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
+            #parser.add_argument('--lambda_identity', type=float, default=0.5, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
+            parser.add_argument('--lambda_identity', type=float, default=0.1, help='use identity mapping. Setting lambda_identity other than 0 has an effect of scaling the weight of the identity mapping loss. For example, if the weight of the identity loss should be 10 times smaller than the weight of the reconstruction loss, please set lambda_identity = 0.1')
 
         return parser
 
@@ -88,7 +93,8 @@ class CycleGANModel(BaseModel):
             self.fake_B_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)  # define GAN loss.
-            self.criterionCycle = networks.GANLoss("ssim").to(self.device)#torch.nn.L1Loss()
+            self.criterionCycle1 = torch.nn.L1Loss()
+            self.criterionCycle2 = SSIM(channels=1)
             self.criterionIdt = torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -170,9 +176,19 @@ class CycleGANModel(BaseModel):
         # GAN loss D_B(G_B(B))
         self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss || G_B(G_A(A)) - A||
-        self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
+        self.loss_cycle_A = self.criterionCycle1(self.rec_A, self.real_A) * lambda_A * 0.7
+        i, j, h, w = get_RandomCrop(self.rec_A, (11, 11))
+        cropped_prediction_A = F.crop(self.rec_A, i, j, h, w)
+        cropped_target_tensor_A = F.crop(self.real_A, i, j, h, w)
+        self.loss_cycle_A += self.criterionCycle2(cropped_prediction_A,
+                                                  cropped_target_tensor_A) * lambda_A * 0.3  # SSIM calculate
+
         # Backward cycle loss || G_A(G_B(B)) - B||
-        self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
+        self.loss_cycle_B = self.criterionCycle1(self.rec_B, self.real_B) * lambda_B * 0.7
+        cropped_prediction_B = F.crop(self.rec_B, i, j, h, w)
+        cropped_target_tensor_B = F.crop(self.real_B, i, j, h, w)
+        self.loss_cycle_B += self.criterionCycle2(cropped_prediction_B,
+                                                  cropped_target_tensor_B) * lambda_B * 0.3  # SSIM calculate
         # combined loss and calculate gradients
         self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
         self.loss_G.backward()
